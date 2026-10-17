@@ -129,13 +129,15 @@
   <details>
     <summary>How this is calculated</summary>
     <p>For every arrival time, a reverse search over the weekday timetable (Tuesday 20 Oct 2026) finds the latest moment you can leave home and still be at the door in time. Walking is 4.8 km/h along a path 1.3× the straight line, up to 1 km to the first stop; changing vehicles takes at least 2 minutes.</p>
-    <p><b>Reliability</b> pushes every leg's arrival back by the delay that is not exceeded on that share of weekday trips, at that stop, on that line, in that hour, plus the expected wait from cancellations. Delays were measured from operators' live data, 24 Sep–16 Oct 2026. The next vehicle is assumed to leave on time, so a late train can cost you the connection. Each leg is buffered on its own, so long trips with changes are estimated cautiously.</p>
+    <p><b>Reliability</b> pushes every leg's arrival back by the delay that is not exceeded on that share of weekday trips, at that stop, on that line, in that hour, plus the expected wait from cancellations. Delays were measured from operators' live data, 24 Sep–16 Oct 2026. The next vehicle is assumed to leave on time, so a late train can cost you the connection; the route then switches to whatever you can still catch, a later train of the same line or a different line or mode. Each leg is buffered on its own, so long trips with changes are estimated cautiously.</p>
     <p>Travel time includes waiting at the end if the last vehicle arrives early. Population: Zensus 2022, 100 m grid.</p>
   </details>
   <div class="foot">Data: DELFI / gtfs.de (CC BY-SA 4.0), Zensus 2022, © OpenStreetMap contributors, basemap © Esri.</div>
 </aside>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3-array@3.2.4/dist/d3-array.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3-contour@4.0.2/dist/d3-contour.min.js"></script>
 <script>
 const COLORS = ["#26FFDB", "#14E3C2", "#08C3A6", "#05A08A", "#067E6E", "#075E54"];   // 10 … 60 min, aqua scale
 const LEVEL_TEXT = [
@@ -170,12 +172,11 @@ fetch("data.json").then(r => r.json()).then(D => {
   if (innerWidth <= 720) map.setView([olat - .09, olon], 10);
   labels.addTo(map);
 
-  const canvas = document.createElement("canvas");
-  canvas.width = D.cols; canvas.height = D.rows;
-  const ctx = canvas.getContext("2d");
-  const img = ctx.createImageData(D.cols, D.rows);
-  const rgb = COLORS.map(c => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)));
-  const overlay = L.imageOverlay(canvas.toDataURL(), bounds, { opacity: .86, interactive: false, className: "iso" }).addTo(map);
+  // bands as vector rings: translucent fill, solid outline
+  const bandLayer = L.layerGroup().addTo(map);
+  const grid = new Float64Array(D.rows * D.cols);
+  const contour = d3.contours().size([D.cols, D.rows]).smooth(true);
+  const toLatLng = ring => ring.map(([x, y]) => [s + y * D.dlat, w + x * D.dlon]);
 
   const office = L.marker([olat, olon], { icon: L.divIcon({ className: "", iconSize: [0, 0],
     html: '<div class="office"><span class="dot"></span><div class="card"><img src="asp_logo_black.png" alt="AS+P"><span>Hedderichstraße 108–110</span></div></div>' }),
@@ -189,16 +190,21 @@ fetch("data.json").then(r => r.json()).then(D => {
     document.getElementById("relh").textContent = LEVEL_TEXT[rel.value];
     document.getElementById("arrv").textContent = time;
     cur = b64(D.scenarios[`${time}|${level}`]);
-    img.data.fill(0);
-    for (let i = 0; i < active.length; i++) {
-      const m = cur[i];
-      if (m > 60) continue;
-      const cell = active[i], r = Math.floor(cell / D.cols), c = cell % D.cols;
-      const p = ((D.rows - 1 - r) * D.cols + c) * 4, k = rgb[Math.min(5, Math.max(0, Math.ceil(m / 10) - 1))];
-      img.data[p] = k[0]; img.data[p + 1] = k[1]; img.data[p + 2] = k[2]; img.data[p + 3] = 255;
-    }
-    ctx.putImageData(img, 0, 0);
-    overlay.setUrl(canvas.toDataURL());
+    // minutes on the full grid; contours are drawn on minus minutes so "within b min" is ">= -b"
+    grid.fill(-999);
+    for (let i = 0; i < active.length; i++) if (cur[i] <= 60) grid[active[i]] = -cur[i];
+    const shapes = contour.thresholds(D.bands.map(b => -b - 0.5))(grid)
+      .sort((a, b) => a.value - b.value);                    // -60.5 first … -10.5 last
+    bandLayer.clearLayers();
+    shapes.forEach((sh, k) => {
+      const i = D.bands.length - 1 - k;                       // band index, 0 = 10 min
+      const inner = k + 1 < shapes.length ? shapes[k + 1].coordinates : [];
+      // the ring between this band and the next one in: inner polygons cut out with even-odd
+      const polys = sh.coordinates.concat(inner).map(poly => poly.map(toLatLng));
+      if (!polys.length) return;
+      L.polygon(polys, { color: COLORS[i], weight: 1.4, opacity: .95, fillColor: COLORS[i], fillOpacity: .28,
+                         fillRule: "evenodd", interactive: false, smoothFactor: 0.6 }).addTo(bandLayer);
+    });
 
     const now = D.pop[`${time}|${level}`], base = D.pop[`${time}|${D.levels[0]}`];
     const max = Math.max(...base);
