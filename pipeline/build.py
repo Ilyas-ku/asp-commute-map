@@ -187,6 +187,7 @@ def main():
     json.dump({
         "office": OFFICE, "box": BOX, "dlat": DLAT, "dlon": DLON, "rows": len(lats), "cols": len(lons),
         "active": base64.b64encode(active.astype(np.uint32).tobytes()).decode(),
+        "popcells": base64.b64encode(np.clip(np.round(cell_pop[active]), 0, 65535).astype(np.uint16).tobytes()).decode(),
         "levels": [n for n, _ in LEVELS], "arrivals": [f"{t // 3600:02d}:{t % 3600 // 60:02d}" for t in ARRIVALS],
         "bands": BANDS, "scenarios": scen, "pop": stats, "mode_delay": mode_delay,
     }, open(WEB / "data.json", "w"), separators=(",", ":"))

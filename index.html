@@ -54,9 +54,14 @@
   .modes .lbl { background: none; border: 0; padding: 2px 0; }
   .ticks { display: flex; justify-content: space-between; font: 500 10.5px 'JetBrains Mono', monospace; color: var(--text2); margin-top: -2px; }
 
-  .legend { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; margin: 20px 0 4px; }
+  .legend { display: grid; gap: 3px; margin: 20px 0 4px; }
   .legend div { height: 10px; border-radius: 2px; }
-  .legend-l { display: grid; grid-template-columns: repeat(6, 1fr); font: 500 11px 'JetBrains Mono', monospace; color: var(--text2); }
+  .legend-l { display: grid; font: 500 11px 'JetBrains Mono', monospace; color: var(--text2); }
+  .view { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--rule); border-radius: 12px; padding: 3px; margin: 2px 0 4px; }
+  .view button { font: 600 13px 'IBM Plex Sans', sans-serif; color: var(--text2); background: none; border: 0; border-radius: 9px; padding: 8px 6px; cursor: pointer; }
+  .view button[aria-pressed="true"] { background: #1A2147; color: var(--text); }
+  .view button[data-view="risk"][aria-pressed="true"] { background: rgba(255, 51, 150, .16); color: #FF86BD; }
+  .view button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   .legend-l span { text-align: left; }
 
   .stats { margin-top: 18px; border-top: 1px solid var(--rule); padding-top: 14px; }
@@ -77,13 +82,10 @@
   .foot { margin-top: 12px; color: var(--text2); font-size: 11.5px; }
   .foot a { color: var(--text2); }
 
-  /* the office */
-  .office { position: relative; }
-  .office .dot { position: absolute; left: -9px; top: -9px; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 3px solid #000; box-shadow: 0 0 0 3px rgba(255,255,255,.35), 0 0 22px rgba(255,255,255,.55); }
-  .office .card { position: absolute; left: 16px; top: -46px; background: #fff; color: #000; border-radius: 10px; padding: 8px 12px 7px; box-shadow: 0 8px 28px rgba(0,0,0,.5); white-space: nowrap; }
-  .office .card img { height: 20px; display: block; }
-  .office .card span { display: block; font: 500 11px 'IBM Plex Sans', sans-serif; margin-top: 4px; color: #333; }
-  .office .card::before { content: ""; position: absolute; left: -6px; top: 30px; border: 6px solid transparent; border-right-color: #fff; border-left: 0; }
+  /* the office: the logo inside a white disc */
+  .office { width: 68px; height: 68px; border-radius: 50%; background: #fff; border: 3px solid #000; display: grid; place-items: center;
+            box-shadow: 0 0 0 4px rgba(255,255,255,.28), 0 0 28px rgba(255,255,255,.45); }
+  .leaflet-container .leaflet-marker-pane .office img { width: 46px; height: auto; display: block; }  /* beats leaflet.css width: auto */
 
   #corner { position: fixed; right: 22px; bottom: 44px; z-index: 900; opacity: .9; pointer-events: none; }
   #corner img { height: 34px; display: block; }
@@ -113,6 +115,10 @@
   <h1 data-i="title"></h1>
   <p class="lead" data-i="lead"></p>
 
+  <div class="view" role="group" aria-label="View">
+    <button type="button" data-view="time" data-i="vTime"></button><button type="button" data-view="risk" data-i="vRisk"></button>
+  </div>
+
   <div class="ctl">
     <div class="ctl-head"><label for="rel" data-i="rel"></label><span class="val" id="relv"></span></div>
     <input id="rel" type="range" min="0" max="4" step="1" value="3" aria-describedby="relh">
@@ -128,7 +134,7 @@
   </div>
 
   <div class="legend" id="legend"></div>
-  <div class="legend-l"><span>10</span><span>20</span><span>30</span><span>40</span><span>50</span><span>60 min</span></div>
+  <div class="legend-l" id="legend-l"></div>
 
   <div class="stats">
     <h2 data-i="people"></h2>
@@ -149,8 +155,11 @@
 <script src="https://cdn.jsdelivr.net/npm/d3-array@3.2.4/dist/d3-array.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/d3-contour@4.0.2/dist/d3-contour.min.js"></script>
 <script>
-const COLORS = ["#26FFDB", "#14E3C2", "#08C3A6", "#05A08A", "#067E6E", "#075E54"];   // 10 … 60 min, aqua scale
-const FILL = [.42, .36, .30, .25, .20, .16];                                            // translucent, nearest strongest
+const BANDS = [20, 30, 40, 50, 60];
+const COLORS = ["#26FFDB", "#12DDBE", "#07B89C", "#05927B", "#066E5E"];   // 20 … 60 min, aqua scale
+const FILL = [.38, .31, .25, .20, .16];                                   // translucent, nearest strongest
+// delay risk: minutes earlier you must leave than the timetable says (pink scale)
+const RISK = [5, 10, 20], RISK_COLORS = ["#AC1E63", "#D5287C", "#FF3396"], RISK_FILL = [.22, .30, .40];
 const T = {
   en: {
     kicker: "Commute map · Frankfurt", title: "How far is the office, really?",
@@ -164,6 +173,13 @@ const T = {
     foot: "Data: DELFI / gtfs.de (CC BY-SA 4.0), Zensus 2022, © OpenStreetMap contributors, basemap © Esri.",
     map: "Map of travel times to the office", doc: "Commute to AS+P",
     buffer: "Average delay per leg:",
+    vTime: "Travel time", vRisk: "Delay risk",
+    riskPeople: "People who must leave earlier",
+    riskRows: ["+5 min", "+10 min", "+20 min"],
+    riskLegend: ["+5", "+10", "+20 min or out of reach"],
+    riskNote: "Pink: how much earlier you must leave than the timetable says, to be on time as often as chosen above. Outlines: travel time bands.",
+    riskOff: "Pick a reliability level above “timetable” to see where delays cost the most.",
+    vs: d => d >= 99 ? "out of reach at this reliability" : `+${d} min vs timetable`,
     modes: { "S-Bahn": "S-Bahn", "Regional rail": "Regional", "U-Bahn": "U-Bahn", "Tram": "Tram", "Bus": "Bus" },
     levels: ["Timetable", "1 in 2 days", "4 in 5 days", "9 in 10 days", "19 in 20 days"],
     hints: ["Timetable times: what the journey planner promises.",
@@ -187,6 +203,13 @@ const T = {
     foot: "Daten: DELFI / gtfs.de (CC BY-SA 4.0), Zensus 2022, © OpenStreetMap-Mitwirkende, Kartengrundlage © Esri.",
     map: "Karte der Fahrzeiten zum Büro", doc: "Pendeln zu AS+P",
     buffer: "Mittlere Verspätung je Abschnitt:",
+    vTime: "Fahrzeit", vRisk: "Verspätungsrisiko",
+    riskPeople: "Einwohner, die früher losmüssen",
+    riskRows: ["+5 min", "+10 min", "+20 min"],
+    riskLegend: ["+5", "+10", "+20 min oder unerreichbar"],
+    riskNote: "Pink: wie viel früher man losgehen muss als laut Fahrplan, um so oft wie oben gewählt pünktlich zu sein. Linien: Fahrzeitzonen.",
+    riskOff: "Wählen Sie oben eine Zuverlässigkeit über „Fahrplan“, um zu sehen, wo Verspätungen am meisten kosten.",
+    vs: d => d >= 99 ? "bei dieser Zuverlässigkeit unerreichbar" : `+${d} min gegenüber Fahrplan`,
     modes: { "S-Bahn": "S-Bahn", "Regional rail": "Regionalzug", "U-Bahn": "U-Bahn", "Tram": "Tram", "Bus": "Bus" },
     levels: ["Fahrplan", "1 von 2 Tagen", "4 von 5 Tagen", "9 von 10 Tagen", "19 von 20 Tagen"],
     hints: ["Fahrplanzeiten: was die Fahrplanauskunft verspricht.",
@@ -229,7 +252,15 @@ L.tileLayer(ESRI + "World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
 const labels = L.tileLayer(ESRI + "World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", {
   maxZoom: 16, pane: "shadowPane", opacity: .9 });
 
-document.getElementById("legend").innerHTML = COLORS.map(c => `<div style="background:${c}"></div>`).join("");
+let view = "time";
+function legend() {
+  const cols = view === "time" ? COLORS : RISK_COLORS;
+  const labels = view === "time" ? BANDS.map((b, i) => i === BANDS.length - 1 ? b + " min" : b) : T[lang].riskLegend;
+  const l = document.getElementById("legend"), ll = document.getElementById("legend-l");
+  l.style.gridTemplateColumns = ll.style.gridTemplateColumns = `repeat(${cols.length}, 1fr)`;
+  l.innerHTML = cols.map(c => `<div style="background:${c}"></div>`).join("");
+  ll.innerHTML = labels.map(t => `<span>${t}</span>`).join("");
+}
 
 fetch("data.json").then(r => r.json()).then(D => {
   const active = new Uint32Array(b64(D.active).buffer);
@@ -247,9 +278,12 @@ fetch("data.json").then(r => r.json()).then(D => {
   const contour = d3.contours().size([D.cols, D.rows]).smooth(true);
   const toLatLng = ring => ring.map(([x, y]) => [s + y * D.dlat, w + x * D.dlon]);
 
-  const office = L.marker([olat, olon], { icon: L.divIcon({ className: "", iconSize: [0, 0],
-    html: '<div class="office"><span class="dot"></span><div class="card"><img src="asp_logo_black.png" alt="AS+P"><span>Hedderichstraße 108–110</span></div></div>' }),
-    keyboard: false, zIndexOffset: 1000 }).addTo(map);
+  L.marker([olat, olon], { icon: L.divIcon({ className: "", iconSize: [74, 74], iconAnchor: [37, 37],
+    html: '<div class="office"><img src="asp_logo_black.png" alt="AS+P"></div>' }),
+    title: "AS+P · Hedderichstraße 108–110", keyboard: false, zIndexOffset: 1000 }).addTo(map);
+  const popcells = new Uint16Array(b64(D.popcells).buffer);
+  const riskLayer = L.layerGroup().addTo(map);
+  const grid2 = new Float64Array(D.rows * D.cols);
 
   const rel = document.getElementById("rel"), arr = document.getElementById("arr");
   let cur = null;
@@ -264,31 +298,70 @@ fetch("data.json").then(r => r.json()).then(D => {
         .map(m => `<span>${T[lang].modes[m] || m}<b>+${dec(md[m])} min</b></span>`).join("");
     document.getElementById("arrv").textContent = time;
     cur = b64(D.scenarios[`${time}|${level}`]);
-    // minutes on the full grid; contours are drawn on minus minutes so "within b min" is ">= -b"
+    const base = b64(D.scenarios[`${time}|${D.levels[0]}`]);
+    legend();
+
+    // travel time rings on minus minutes, so "within b min" is ">= -b"
     grid.fill(-999);
     for (let i = 0; i < active.length; i++) if (cur[i] <= 60) grid[active[i]] = -cur[i];
-    const shapes = contour.thresholds(D.bands.map(b => -b - 0.5))(grid)
-      .sort((a, b) => a.value - b.value);                    // -60.5 first … -10.5 last
-    bandLayer.clearLayers();
-    shapes.forEach((sh, k) => {
-      const i = D.bands.length - 1 - k;                       // band index, 0 = 10 min
-      const inner = k + 1 < shapes.length ? shapes[k + 1].coordinates : [];
-      // the ring between this band and the next one in: inner polygons cut out with even-odd
-      const polys = sh.coordinates.concat(inner).map(poly => poly.map(toLatLng));
-      if (!polys.length) return;
-      L.polygon(polys, { color: COLORS[i], weight: 1.4, opacity: .95, fillColor: COLORS[i], fillOpacity: FILL[i],
-                         fillRule: "evenodd", interactive: false, smoothFactor: 0.6 }).addTo(bandLayer);
+    rings(bandLayer, grid, BANDS.map(b => -b - 0.5), i => {
+      const k = BANDS.length - 1 - i;                          // rings come out far to near
+      return { color: COLORS[k], weight: 1.4, opacity: view === "time" ? .95 : .55,
+               fillColor: COLORS[k], fillOpacity: view === "time" ? FILL[k] : 0 };
     });
 
-    const now = D.pop[`${time}|${level}`], base = D.pop[`${time}|${D.levels[0]}`];
-    const max = Math.max(...base);
-    document.getElementById("rows").innerHTML = D.bands.filter(b => b >= 20).map(b => {
-      const i = D.bands.indexOf(b), loss = base[i] ? 1 - now[i] / base[i] : 0;
+    // delay risk: extra minutes over the timetable; lost within the hour counts as 99
+    riskLayer.clearLayers();
+    const people = [0, 0, 0];
+    if (view === "risk" && +rel.value > 0) {
+      grid2.fill(-999);
+      for (let i = 0; i < active.length; i++) {
+        if (base[i] > 60) continue;
+        const d = cur[i] > 60 ? 99 : cur[i] - base[i];
+        grid2[active[i]] = d;
+        RISK.forEach((r, k) => { if (d >= r) people[k] += popcells[i]; });
+      }
+      rings(riskLayer, grid2, RISK.map(r => r - 0.5), i => (
+        { color: RISK_COLORS[i], weight: 1.2, opacity: .9, fillColor: RISK_COLORS[i], fillOpacity: RISK_FILL[i] }));
+    }
+
+    const stats = document.getElementById("rows"), note = document.querySelector('[data-i="note"]'), head = document.querySelector('[data-i="people"]');
+    if (view === "risk") {
+      head.textContent = T[lang].riskPeople;
+      note.textContent = +rel.value > 0 ? T[lang].riskNote : T[lang].riskOff;
+      const max = Math.max(1, ...people);
+      stats.innerHTML = +rel.value === 0 ? "" : RISK.map((r, k) => `<div class="row"><span class="k">${T[lang].riskRows[k]}</span>
+        <span class="bar"><i style="width:${people[k] / max * 100}%;background:${RISK_COLORS[k]}"></i></span>
+        <span class="v">${T[lang].num(people[k])}</span></div>`).join("");
+      return;
+    }
+    head.textContent = T[lang].people; note.textContent = T[lang].note;
+    const nowP = D.pop[`${time}|${level}`], baseP = D.pop[`${time}|${D.levels[0]}`];
+    const max = Math.max(...baseP);
+    stats.innerHTML = BANDS.map((b, k) => {
+      const i = D.bands.indexOf(b), loss = baseP[i] ? 1 - nowP[i] / baseP[i] : 0;
       return `<div class="row"><span class="k">${b} min</span>
-        <span class="bar"><i class="ghost" style="width:${base[i] / max * 100}%"></i><i style="width:${now[i] / max * 100}%;background:${COLORS[i]}"></i></span>
-        <span class="v">${T[lang].num(now[i])}${rel.value > 0 && loss > 0.005 ? `<span class="d">−${Math.round(loss * 100)}%</span>` : ""}</span></div>`;
+        <span class="bar"><i class="ghost" style="width:${baseP[i] / max * 100}%"></i><i style="width:${nowP[i] / max * 100}%;background:${COLORS[k]}"></i></span>
+        <span class="v">${T[lang].num(nowP[i])}${rel.value > 0 && loss > 0.005 ? `<span class="d">−${Math.round(loss * 100)}%</span>` : ""}</span></div>`;
     }).join("");
   }
+
+  // nested contour rings: each ring is its contour minus the next one in (even-odd)
+  function rings(layer, values, thresholds, style) {
+    layer.clearLayers();
+    const shapes = contour.thresholds(thresholds)(values).sort((a, b) => a.value - b.value);
+    shapes.forEach((sh, k) => {
+      const inner = k + 1 < shapes.length ? shapes[k + 1].coordinates : [];
+      const polys = sh.coordinates.concat(inner).map(poly => poly.map(toLatLng));
+      if (polys.length) L.polygon(polys, { ...style(k), fillRule: "evenodd", interactive: false, smoothFactor: 0.6 }).addTo(layer);
+    });
+  }
+  document.querySelectorAll(".view button").forEach(btn => btn.addEventListener("click", () => {
+    view = btn.dataset.view;
+    document.querySelectorAll(".view button").forEach(b => b.setAttribute("aria-pressed", b === btn));
+    map.closePopup(); draw();
+  }));
+  document.querySelector('.view button[data-view="time"]').setAttribute("aria-pressed", "true");
   rel.addEventListener("input", draw); arr.addEventListener("input", draw);
   redraw = () => { map.closePopup(); draw(); };
   draw();
@@ -304,7 +377,9 @@ fetch("data.json").then(r => r.json()).then(D => {
     const html = here > 60
       ? `<div class="pop-t">60+ min</div><div class="pop-s">${T[lang].far(tt)}</div>`
       : `<div class="pop-t">${here} min</div><div class="pop-s">${T[lang].leave(leave(here), tt)}</div>`;
-    L.popup({ closeButton: false }).setLatLng(ev.latlng).setContent(html).openOn(map);
+    const extra = view === "risk" && tt <= 60 && +rel.value > 0
+      ? `<div class="pop-s" style="color:#FF86BD;margin-top:4px">${T[lang].vs(here > 60 ? 99 : here - tt)}</div>` : "";
+    L.popup({ closeButton: false }).setLatLng(ev.latlng).setContent(html + extra).openOn(map);
   });
 });
 </script>
