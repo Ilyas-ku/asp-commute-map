@@ -30,6 +30,10 @@
   }
   .brand { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
   .brand img { height: 26px; }
+  .lang { display: inline-flex; border: 1px solid var(--rule); border-radius: 999px; padding: 2px; }
+  .lang button { font: 700 11px 'JetBrains Mono', monospace; letter-spacing: 1px; color: var(--text2); background: none; border: 0; border-radius: 999px; padding: 4px 10px; cursor: pointer; }
+  .lang button[aria-pressed="true"] { background: var(--blue); color: #fff; }
+  .lang button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   .kicker { font: 600 11px 'Chakra Petch', sans-serif; letter-spacing: 3px; color: var(--text2); text-transform: uppercase; }
   h1 { font: 700 27px/1.15 'Chakra Petch', sans-serif; margin: 6px 0 6px; letter-spacing: .3px; }
   .lead { color: var(--text2); margin: 0 0 18px; font-size: 14px; }
@@ -96,23 +100,24 @@
 </style>
 </head>
 <body>
-<div id="map" role="application" aria-label="Map of travel times to the AS+P office"></div>
+<div id="map" role="application" aria-label="Map of travel times to the office"></div>
 <div id="corner"><img src="asp_logo_white.png" alt="AS+P"></div>
 
 <aside id="panel">
-  <div class="brand"><span class="kicker">Commute map · Frankfurt</span></div>
-  <h1>How far is the office, really?</h1>
-  <p class="lead">Door-to-door by public transport to Hedderichstraße 108–110 on a weekday morning, and how the map shrinks once you account for delays and cancellations.</p>
+  <div class="brand"><span class="kicker" data-i="kicker"></span>
+    <div class="lang" role="group" aria-label="Language"><button type="button" data-lang="en">EN</button><button type="button" data-lang="de">DE</button></div></div>
+  <h1 data-i="title"></h1>
+  <p class="lead" data-i="lead"></p>
 
   <div class="ctl">
-    <div class="ctl-head"><label for="rel">I need to be on time</label><span class="val" id="relv"></span></div>
+    <div class="ctl-head"><label for="rel" data-i="rel"></label><span class="val" id="relv"></span></div>
     <input id="rel" type="range" min="0" max="4" step="1" value="3" aria-describedby="relh">
-    <div class="ticks"><span>timetable</span><span>1/2</span><span>4/5</span><span>9/10</span><span>19/20</span></div>
+    <div class="ticks"><span data-i="tt"></span><span>1/2</span><span>4/5</span><span>9/10</span><span>19/20</span></div>
     <div class="hint" id="relh"></div>
   </div>
 
   <div class="ctl">
-    <div class="ctl-head"><label for="arr">Arrive at the office by</label><span class="val" id="arrv"></span></div>
+    <div class="ctl-head"><label for="arr" data-i="arr"></label><span class="val" id="arrv"></span></div>
     <input id="arr" type="range" min="0" max="12" step="1" value="6">
     <div class="ticks"><span>07:00</span><span>08:00</span><span>09:00</span><span>10:00</span></div>
   </div>
@@ -121,18 +126,18 @@
   <div class="legend-l"><span>10</span><span>20</span><span>30</span><span>40</span><span>50</span><span>60 min</span></div>
 
   <div class="stats">
-    <h2>People who live within</h2>
+    <h2 data-i="people"></h2>
     <div id="rows"></div>
-    <div class="note">Dashed outline: the same with timetable times. Click anywhere on the map for the travel time from there.</div>
+    <div class="note" data-i="note"></div>
   </div>
 
   <details>
-    <summary>How this is calculated</summary>
-    <p>For every arrival time, a reverse search over the weekday timetable (Tuesday 20 Oct 2026) finds the latest moment you can leave home and still be at the door in time. Walking is 4.8 km/h along a path 1.3× the straight line, up to 1 km to the first stop; changing vehicles takes at least 2 minutes.</p>
-    <p><b>Reliability</b> pushes every leg's arrival back by the delay that is not exceeded on that share of weekday trips, at that stop, on that line, in that hour, plus the expected wait from cancellations. Delays were measured from operators' live data, 24 Sep–16 Oct 2026. The next vehicle is assumed to leave on time, so a late train can cost you the connection; the route then switches to whatever you can still catch, a later train of the same line or a different line or mode. Each leg is buffered on its own, so long trips with changes are estimated cautiously.</p>
-    <p>Travel time includes waiting at the end if the last vehicle arrives early. Population: Zensus 2022, 100 m grid.</p>
+    <summary data-i="how"></summary>
+    <p data-i="how1"></p>
+    <p data-i="how2"></p>
+    <p data-i="how3"></p>
   </details>
-  <div class="foot">Data: DELFI / gtfs.de (CC BY-SA 4.0), Zensus 2022, © OpenStreetMap contributors, basemap © Esri.</div>
+  <div class="foot" data-i="foot"></div>
 </aside>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -140,15 +145,69 @@
 <script src="https://cdn.jsdelivr.net/npm/d3-contour@4.0.2/dist/d3-contour.min.js"></script>
 <script>
 const COLORS = ["#26FFDB", "#14E3C2", "#08C3A6", "#05A08A", "#067E6E", "#075E54"];   // 10 … 60 min, aqua scale
-const LEVEL_TEXT = [
-  "Timetable times: what the journey planner promises.",
-  "On time on a typical day: every other morning goes worse.",
-  "On time 4 mornings out of 5: about once a week you are late.",
-  "On time 9 mornings out of 10: about twice a month you are late.",
-  "On time 19 mornings out of 20: about once a month you are late.",
-];
+const T = {
+  en: {
+    kicker: "Commute map · Frankfurt", title: "How far is the office, really?",
+    lead: "Door-to-door by public transport to Hedderichstraße 108–110 on a weekday morning, and how the map shrinks once you account for delays and cancellations.",
+    rel: "I need to be on time", tt: "timetable", arr: "Arrive at the office by", people: "People who live within",
+    note: "Dashed outline: the same with timetable times. Click anywhere on the map for the travel time from there.",
+    how: "How this is calculated",
+    how1: "For every arrival time, a reverse search over the weekday timetable (Tuesday 20 Oct 2026) finds the latest moment you can leave home and still be at the door in time. Walking is 4.8 km/h along a path 1.3× the straight line, up to 1 km to the first stop; changing vehicles takes at least 2 minutes.",
+    how2: "<b>Reliability</b> pushes every leg's arrival back by the delay that is not exceeded on that share of weekday trips, at that stop, on that line, in that hour, plus the expected wait from cancellations. Delays were measured from operators' live data, 24 Sep–16 Oct 2026. The next vehicle is assumed to leave on time, so a late train can cost you the connection; the route then switches to whatever you can still catch, a later train of the same line or a different line or mode. Each leg is buffered on its own, so long trips with changes are estimated cautiously.",
+    how3: "Travel time includes waiting at the end if the last vehicle arrives early. Population: Zensus 2022, 100 m grid.",
+    foot: "Data: DELFI / gtfs.de (CC BY-SA 4.0), Zensus 2022, © OpenStreetMap contributors, basemap © Esri.",
+    map: "Map of travel times to the office", doc: "Commute to AS+P",
+    levels: ["Timetable", "1 in 2 days", "4 in 5 days", "9 in 10 days", "19 in 20 days"],
+    hints: ["Timetable times: what the journey planner promises.",
+            "On time on a typical day: every other morning goes worse.",
+            "On time 4 mornings out of 5: about once a week you are late.",
+            "On time 9 mornings out of 10: about twice a month you are late.",
+            "On time 19 mornings out of 20: about once a month you are late."],
+    num: n => n >= 1e6 ? (n / 1e6).toFixed(2) + " M" : Math.round(n / 1000) + "k",
+    leave: (t, tt) => `leave by ${t} · timetable says ${tt} min`,
+    far: tt => tt <= 60 ? `timetable: ${tt} min` : "or too far to walk to a stop",
+  },
+  de: {
+    kicker: "Pendelkarte · Frankfurt", title: "Wie weit ist das Büro wirklich?",
+    lead: "Von Tür zu Tür mit Bus und Bahn zur Hedderichstraße 108–110 an einem Werktagmorgen – und wie die Karte schrumpft, wenn man Verspätungen und Ausfälle einrechnet.",
+    rel: "Ich muss pünktlich sein", tt: "Fahrplan", arr: "Im Büro sein um", people: "Einwohner innerhalb von",
+    note: "Gestrichelt: dasselbe nach Fahrplan. Klicken Sie auf die Karte, um die Fahrzeit von dort zu sehen.",
+    how: "So wird gerechnet",
+    how1: "Für jede Ankunftszeit sucht ein Rückwärts-Routing im Werktagsfahrplan (Dienstag, 20.10.2026) den spätesten Zeitpunkt, zu dem man zu Hause losgehen kann und trotzdem rechtzeitig ankommt. Fußwege: 4,8 km/h auf einem Weg, der 1,3-mal so lang ist wie die Luftlinie, bis zu 1 km zur ersten Haltestelle; ein Umstieg dauert mindestens 2 Minuten.",
+    how2: "<b>Zuverlässigkeit</b> verschiebt die Ankunft jedes Abschnitts um die Verspätung, die bei diesem Anteil der Werktagsfahrten nicht überschritten wird – an dieser Haltestelle, auf dieser Linie, in dieser Stunde –, plus die erwartete Wartezeit durch Ausfälle. Die Verspätungen stammen aus den Echtzeitdaten der Verkehrsunternehmen, 24.09.–16.10.2026. Das Anschlussfahrzeug fährt im Modell pünktlich ab, eine Verspätung kann also den Anschluss kosten; dann nimmt die Route, was noch erreichbar ist: einen späteren Zug derselben Linie oder eine andere Linie bzw. ein anderes Verkehrsmittel. Jeder Abschnitt bekommt seinen eigenen Puffer, Fahrten mit Umstiegen sind daher vorsichtig geschätzt.",
+    how3: "Die Fahrzeit enthält auch Wartezeit am Ziel, wenn das letzte Fahrzeug früher ankommt. Bevölkerung: Zensus 2022, 100-m-Raster.",
+    foot: "Daten: DELFI / gtfs.de (CC BY-SA 4.0), Zensus 2022, © OpenStreetMap-Mitwirkende, Kartengrundlage © Esri.",
+    map: "Karte der Fahrzeiten zum Büro", doc: "Pendeln zu AS+P",
+    levels: ["Fahrplan", "1 von 2 Tagen", "4 von 5 Tagen", "9 von 10 Tagen", "19 von 20 Tagen"],
+    hints: ["Fahrplanzeiten: was die Fahrplanauskunft verspricht.",
+            "Pünktlich an einem typischen Tag: jeder zweite Morgen läuft schlechter.",
+            "Pünktlich an 4 von 5 Morgen: etwa einmal pro Woche zu spät.",
+            "Pünktlich an 9 von 10 Morgen: etwa zweimal im Monat zu spät.",
+            "Pünktlich an 19 von 20 Morgen: etwa einmal im Monat zu spät."],
+    num: n => n >= 1e6 ? (n / 1e6).toFixed(2).replace(".", ",") + " Mio." : Math.round(n / 1000) + " Tsd.",
+    leave: (t, tt) => `spätestens um ${t} losgehen · laut Fahrplan ${tt} min`,
+    far: tt => tt <= 60 ? `laut Fahrplan: ${tt} min` : "oder zu weit zur nächsten Haltestelle",
+  },
+};
+// language: ?lang= in the URL, else the last choice, else the browser's
+function saved() { try { return localStorage.getItem("lang"); } catch (e) { return null; } }
+const asked = new URLSearchParams(location.search).get("lang");
+let lang = asked in T ? asked : saved() in T ? saved()
+         : (navigator.language || "").toLowerCase().startsWith("de") ? "de" : "en";
+let redraw = () => {};
+function setLang(l) {
+  lang = l;
+  try { localStorage.setItem("lang", l); } catch (e) {}
+  document.documentElement.lang = l; document.title = T[l].doc;
+  document.querySelectorAll("[data-i]").forEach(el => el.innerHTML = T[l][el.dataset.i]);
+  document.getElementById("map").setAttribute("aria-label", T[l].map);
+  document.querySelectorAll(".lang button").forEach(b => b.setAttribute("aria-pressed", b.dataset.lang === l));
+  redraw();
+}
+document.querySelectorAll(".lang button").forEach(b => b.addEventListener("click", () => setLang(b.dataset.lang)));
+setLang(lang);
+
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-const fmt = n => n >= 1e6 ? (n / 1e6).toFixed(2) + " M" : Math.round(n / 1000) + "k";
 
 const map = L.map("map", { zoomControl: false, attributionControl: true, minZoom: 9, maxZoom: 15 });
 L.control.zoom({ position: "topright" }).addTo(map);
@@ -186,8 +245,8 @@ fetch("data.json").then(r => r.json()).then(D => {
   let cur = null;
   function draw() {
     const level = D.levels[rel.value], time = D.arrivals[arr.value];
-    document.getElementById("relv").textContent = level;
-    document.getElementById("relh").textContent = LEVEL_TEXT[rel.value];
+    document.getElementById("relv").textContent = T[lang].levels[rel.value];
+    document.getElementById("relh").textContent = T[lang].hints[rel.value];
     document.getElementById("arrv").textContent = time;
     cur = b64(D.scenarios[`${time}|${level}`]);
     // minutes on the full grid; contours are drawn on minus minutes so "within b min" is ">= -b"
@@ -212,10 +271,11 @@ fetch("data.json").then(r => r.json()).then(D => {
       const i = D.bands.indexOf(b), loss = base[i] ? 1 - now[i] / base[i] : 0;
       return `<div class="row"><span class="k">${b} min</span>
         <span class="bar"><i class="ghost" style="width:${base[i] / max * 100}%"></i><i style="width:${now[i] / max * 100}%;background:${COLORS[i]}"></i></span>
-        <span class="v">${fmt(now[i])}${rel.value > 0 && loss > 0.005 ? `<span class="d">−${Math.round(loss * 100)}%</span>` : ""}</span></div>`;
+        <span class="v">${T[lang].num(now[i])}${rel.value > 0 && loss > 0.005 ? `<span class="d">−${Math.round(loss * 100)}%</span>` : ""}</span></div>`;
     }).join("");
   }
   rel.addEventListener("input", draw); arr.addEventListener("input", draw);
+  redraw = () => { map.closePopup(); draw(); };
   draw();
 
   const index = new Map(); active.forEach((c, i) => index.set(c, i));
@@ -227,8 +287,8 @@ fetch("data.json").then(r => r.json()).then(D => {
     const tt = i === undefined ? 255 : b64(D.scenarios[`${time}|${D.levels[0]}`])[i];
     const leave = m => { const [h, mm] = time.split(":").map(Number); const t = h * 60 + mm - m; return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
     const html = here > 60
-      ? `<div class="pop-t">60+ min</div><div class="pop-s">${tt <= 60 ? `timetable: ${tt} min` : "or too far to walk to a stop"}</div>`
-      : `<div class="pop-t">${here} min</div><div class="pop-s">leave by ${leave(here)} · timetable says ${tt} min</div>`;
+      ? `<div class="pop-t">60+ min</div><div class="pop-s">${T[lang].far(tt)}</div>`
+      : `<div class="pop-t">${here} min</div><div class="pop-s">${T[lang].leave(leave(here), tt)}</div>`;
     L.popup({ closeButton: false }).setLatLng(ev.latlng).setContent(html).openOn(map);
   });
 });
