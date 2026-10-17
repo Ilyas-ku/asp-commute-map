@@ -48,6 +48,10 @@
   input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: var(--text); border: 4px solid var(--blue); margin-top: -8px; box-shadow: 0 0 12px rgba(89,111,255,.6); }
   input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--text); border: 4px solid var(--blue); box-shadow: 0 0 12px rgba(89,111,255,.6); }
   input[type=range]:focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; border-radius: 4px; }
+  .modes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .modes span { font-size: 12px; color: var(--text2); background: #11162B; border: 1px solid var(--rule); border-radius: 999px; padding: 2px 9px; }
+  .modes b { font: 700 12px 'JetBrains Mono', monospace; color: var(--text); margin-left: 4px; }
+  .modes .lbl { background: none; border: 0; padding: 2px 0; }
   .ticks { display: flex; justify-content: space-between; font: 500 10.5px 'JetBrains Mono', monospace; color: var(--text2); margin-top: -2px; }
 
   .legend { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; margin: 20px 0 4px; }
@@ -114,6 +118,7 @@
     <input id="rel" type="range" min="0" max="4" step="1" value="3" aria-describedby="relh">
     <div class="ticks"><span data-i="tt"></span><span>1/2</span><span>4/5</span><span>9/10</span><span>19/20</span></div>
     <div class="hint" id="relh"></div>
+    <div class="modes" id="modes" aria-live="polite"></div>
   </div>
 
   <div class="ctl">
@@ -145,6 +150,7 @@
 <script src="https://cdn.jsdelivr.net/npm/d3-contour@4.0.2/dist/d3-contour.min.js"></script>
 <script>
 const COLORS = ["#26FFDB", "#14E3C2", "#08C3A6", "#05A08A", "#067E6E", "#075E54"];   // 10 … 60 min, aqua scale
+const FILL = [.42, .36, .30, .25, .20, .16];                                            // translucent, nearest strongest
 const T = {
   en: {
     kicker: "Commute map · Frankfurt", title: "How far is the office, really?",
@@ -157,6 +163,8 @@ const T = {
     how3: "Travel time includes waiting at the end if the last vehicle arrives early. Population: Zensus 2022, 100 m grid.",
     foot: "Data: DELFI / gtfs.de (CC BY-SA 4.0), Zensus 2022, © OpenStreetMap contributors, basemap © Esri.",
     map: "Map of travel times to the office", doc: "Commute to AS+P",
+    buffer: "Average delay per leg:",
+    modes: { "S-Bahn": "S-Bahn", "Regional rail": "Regional", "U-Bahn": "U-Bahn", "Tram": "Tram", "Bus": "Bus" },
     levels: ["Timetable", "1 in 2 days", "4 in 5 days", "9 in 10 days", "19 in 20 days"],
     hints: ["Timetable times: what the journey planner promises.",
             "On time on a typical day: every other morning goes worse.",
@@ -178,6 +186,8 @@ const T = {
     how3: "Die Fahrzeit enthält auch Wartezeit am Ziel, wenn das letzte Fahrzeug früher ankommt. Bevölkerung: Zensus 2022, 100-m-Raster.",
     foot: "Daten: DELFI / gtfs.de (CC BY-SA 4.0), Zensus 2022, © OpenStreetMap-Mitwirkende, Kartengrundlage © Esri.",
     map: "Karte der Fahrzeiten zum Büro", doc: "Pendeln zu AS+P",
+    buffer: "Mittlere Verspätung je Abschnitt:",
+    modes: { "S-Bahn": "S-Bahn", "Regional rail": "Regionalzug", "U-Bahn": "U-Bahn", "Tram": "Tram", "Bus": "Bus" },
     levels: ["Fahrplan", "1 von 2 Tagen", "4 von 5 Tagen", "9 von 10 Tagen", "19 von 20 Tagen"],
     hints: ["Fahrplanzeiten: was die Fahrplanauskunft verspricht.",
             "Pünktlich an einem typischen Tag: jeder zweite Morgen läuft schlechter.",
@@ -247,6 +257,11 @@ fetch("data.json").then(r => r.json()).then(D => {
     const level = D.levels[rel.value], time = D.arrivals[arr.value];
     document.getElementById("relv").textContent = T[lang].levels[rel.value];
     document.getElementById("relh").textContent = T[lang].hints[rel.value];
+    const md = D.mode_delay[level], dec = v => lang === "de" ? v.toFixed(1).replace(".", ",") : v.toFixed(1);
+    document.getElementById("modes").innerHTML = +rel.value === 0 ? "" :
+      `<span class="lbl">${T[lang].buffer}</span>` +
+      Object.keys(md).sort((a, b) => md[b] - md[a])
+        .map(m => `<span>${T[lang].modes[m] || m}<b>+${dec(md[m])} min</b></span>`).join("");
     document.getElementById("arrv").textContent = time;
     cur = b64(D.scenarios[`${time}|${level}`]);
     // minutes on the full grid; contours are drawn on minus minutes so "within b min" is ">= -b"
@@ -261,7 +276,7 @@ fetch("data.json").then(r => r.json()).then(D => {
       // the ring between this band and the next one in: inner polygons cut out with even-odd
       const polys = sh.coordinates.concat(inner).map(poly => poly.map(toLatLng));
       if (!polys.length) return;
-      L.polygon(polys, { color: COLORS[i], weight: 1.4, opacity: .95, fillColor: COLORS[i], fillOpacity: .28,
+      L.polygon(polys, { color: COLORS[i], weight: 1.4, opacity: .95, fillColor: COLORS[i], fillOpacity: FILL[i],
                          fillRule: "evenodd", interactive: false, smoothFactor: 0.6 }).addTo(bandLayer);
     });
 

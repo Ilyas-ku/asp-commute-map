@@ -132,6 +132,11 @@ def main():
     ox, oy = to_m.transform(OFFICE[1], OFFICE[0])
 
     delays = leg_delays(con, stops, dl)
+    # average buffer per mode in the morning peak, shown next to the slider
+    peak = (con.arr_s >= 6.5 * 3600) & (con.arr_s <= 9.5 * 3600)
+    mode_delay = {name: (pd.Series(delays[name][peak.to_numpy()], index=con["mode"][peak])
+                         .groupby(level=0).mean() / 60).round(1).to_dict() for name, _ in LEVELS}
+    print(mode_delay)
     c = {"dep": con.dep_stop.map(sid).to_numpy(), "arr": con.arr_stop.map(sid).to_numpy(),
          "dep_s": con.dep_s.to_numpy().astype(float), "arr_s": con.arr_s.to_numpy().astype(float),
          "trip": pd.factorize(con.trip)[0]}
@@ -183,7 +188,7 @@ def main():
         "office": OFFICE, "box": BOX, "dlat": DLAT, "dlon": DLON, "rows": len(lats), "cols": len(lons),
         "active": base64.b64encode(active.astype(np.uint32).tobytes()).decode(),
         "levels": [n for n, _ in LEVELS], "arrivals": [f"{t // 3600:02d}:{t % 3600 // 60:02d}" for t in ARRIVALS],
-        "bands": BANDS, "scenarios": scen, "pop": stats,
+        "bands": BANDS, "scenarios": scen, "pop": stats, "mode_delay": mode_delay,
     }, open(WEB / "data.json", "w"), separators=(",", ":"))
     print(f"wrote {WEB / 'data.json'} ({(WEB / 'data.json').stat().st_size / 1e6:.1f} MB)")
 
