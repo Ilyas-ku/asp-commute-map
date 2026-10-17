@@ -20,5 +20,5 @@ area shrink once real delays and cancellations are taken into account?
 `pipeline/` holds the scripts: `export_inputs.py` and `export_delays.py` run against
 the collector's DuckDB, `build.py` computes the 65 scenarios into `data.json`.
 
-Independent analysis, not affiliated with AS+P. Data: DELFI / gtfs.de (CC BY-SA 4.0),
+Data: DELFI / gtfs.de (CC BY-SA 4.0),
 Zensus 2022 (dl-de/by-2-0), © OpenStreetMap contributors, basemap © Esri.
