@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Commute to AS+P</title>
+<meta name="description" content="How far you get to Hedderichstraße 108–110, Frankfurt, by public transport, adjusted for how reliable the trains and buses really are.">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0B0E1A; --panel: rgba(11, 14, 26, .92); --text: #E6E8F0; --text2: #8A90A8; --rule: #1E2440;
+    --blue: #596FFF; --aqua: #26FFDB; --pink: #FF3396;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 400 15px/1.45 'IBM Plex Sans', system-ui, sans-serif; }
+  #map { position: fixed; inset: 0; background: var(--bg); }
+  .leaflet-container { background: var(--bg); font: inherit; }
+  .leaflet-control-attribution { background: rgba(11,14,26,.75) !important; color: var(--text2) !important; font-size: 11px; }
+  .leaflet-control-attribution a { color: var(--text2) !important; }
+  .leaflet-bar a { background: var(--panel); color: var(--text); border-color: var(--rule); }
+  .leaflet-bar a:hover { background: #151B36; color: var(--text); }
+
+  #panel {
+    position: fixed; top: 16px; left: 16px; width: 380px; max-height: calc(100% - 32px); overflow: auto;
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 18px; padding: 22px 22px 18px;
+    backdrop-filter: blur(8px); z-index: 1000; box-shadow: 0 20px 60px rgba(0,0,0,.45);
+  }
+  .brand { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .brand img { height: 26px; }
+  .kicker { font: 600 11px 'Chakra Petch', sans-serif; letter-spacing: 3px; color: var(--text2); text-transform: uppercase; }
+  h1 { font: 700 27px/1.15 'Chakra Petch', sans-serif; margin: 6px 0 6px; letter-spacing: .3px; }
+  .lead { color: var(--text2); margin: 0 0 18px; font-size: 14px; }
+  .ctl { margin: 18px 0 6px; }
+  .ctl-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .ctl-head label { font-weight: 600; font-size: 14px; }
+  .val { font: 700 15px 'JetBrains Mono', monospace; color: var(--aqua); white-space: nowrap; }
+  .hint { color: var(--text2); font-size: 12.5px; margin-top: 4px; min-height: 18px; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 30px; background: transparent; margin: 6px 0 0; cursor: pointer; }
+  input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--rule), #2F3A8B); }
+  input[type=range]::-moz-range-track { height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--rule), #2F3A8B); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: var(--text); border: 4px solid var(--blue); margin-top: -8px; box-shadow: 0 0 12px rgba(89,111,255,.6); }
+  input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--text); border: 4px solid var(--blue); box-shadow: 0 0 12px rgba(89,111,255,.6); }
+  input[type=range]:focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; border-radius: 4px; }
+  .ticks { display: flex; justify-content: space-between; font: 500 10.5px 'JetBrains Mono', monospace; color: var(--text2); margin-top: -2px; }
+
+  .legend { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; margin: 20px 0 4px; }
+  .legend div { height: 10px; border-radius: 2px; }
+  .legend-l { display: grid; grid-template-columns: repeat(6, 1fr); font: 500 11px 'JetBrains Mono', monospace; color: var(--text2); }
+  .legend-l span { text-align: left; }
+
+  .stats { margin-top: 18px; border-top: 1px solid var(--rule); padding-top: 14px; }
+  .stats h2 { font: 600 12px 'Chakra Petch', sans-serif; letter-spacing: 2px; color: var(--text2); margin: 0 0 10px; text-transform: uppercase; }
+  .row { display: grid; grid-template-columns: 54px 1fr 74px; align-items: center; gap: 8px; margin: 6px 0; font-size: 13px; }
+  .row .k { font: 500 12px 'JetBrains Mono', monospace; color: var(--text2); }
+  .bar { position: relative; height: 12px; background: #11162B; border-radius: 3px; overflow: hidden; }
+  .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; transition: width .35s ease; }
+  .bar i.ghost { background: transparent; border: 1px dashed #4B5DD7; }
+  .row .v { font: 700 13px 'JetBrains Mono', monospace; text-align: right; }
+  .row .d { display: block; font-size: 11px; color: var(--pink); font-weight: 500; }
+  .note { color: var(--text2); font-size: 12px; margin-top: 8px; }
+  .note b { color: var(--text); font-weight: 500; }
+
+  details { margin-top: 14px; border-top: 1px solid var(--rule); padding-top: 12px; color: var(--text2); font-size: 12.5px; }
+  summary { cursor: pointer; color: var(--text); font-weight: 500; font-size: 13px; }
+  details p { margin: 8px 0; }
+  .foot { margin-top: 12px; color: var(--text2); font-size: 11.5px; }
+  .foot a { color: var(--text2); }
+
+  /* the office */
+  .office { position: relative; }
+  .office .dot { position: absolute; left: -9px; top: -9px; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 3px solid #000; box-shadow: 0 0 0 3px rgba(255,255,255,.35), 0 0 22px rgba(255,255,255,.55); }
+  .office .card { position: absolute; left: 16px; top: -46px; background: #fff; color: #000; border-radius: 10px; padding: 8px 12px 7px; box-shadow: 0 8px 28px rgba(0,0,0,.5); white-space: nowrap; }
+  .office .card img { height: 20px; display: block; }
+  .office .card span { display: block; font: 500 11px 'IBM Plex Sans', sans-serif; margin-top: 4px; color: #333; }
+  .office .card::before { content: ""; position: absolute; left: -6px; top: 30px; border: 6px solid transparent; border-right-color: #fff; border-left: 0; }
+
+  #corner { position: fixed; right: 22px; bottom: 44px; z-index: 900; opacity: .9; pointer-events: none; }
+  #corner img { height: 34px; display: block; }
+
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--panel); color: var(--text); border: 1px solid var(--rule); }
+  .leaflet-popup-content { margin: 12px 14px; font-size: 13px; }
+  .pop-t { font: 700 22px 'JetBrains Mono', monospace; }
+  .pop-s { color: var(--text2); font-size: 12px; }
+
+  @media (max-width: 720px) {
+    #panel { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 48%; border-radius: 18px 18px 0 0; padding: 16px; }
+    .leaflet-control-zoom { display: none; }
+    h1 { font-size: 22px; }
+    .lead { display: none; }
+    #corner { top: 16px; bottom: auto; right: auto; left: 16px; }
+    #corner img { height: 26px; }
+  }
+</style>
+</head>
+<body>
+<div id="map" role="application" aria-label="Map of travel times to the AS+P office"></div>
+<div id="corner"><img src="asp_logo_white.png" alt="AS+P"></div>
+
+<aside id="panel">
+  <div class="brand"><span class="kicker">Commute map · Frankfurt</span></div>
+  <h1>How far is the office, really?</h1>
+  <p class="lead">Door-to-door by public transport to Hedderichstraße 108–110 on a weekday morning, and how the map shrinks once you account for delays and cancellations.</p>
+
+  <div class="ctl">
+    <div class="ctl-head"><label for="rel">I need to be on time</label><span class="val" id="relv"></span></div>
+    <input id="rel" type="range" min="0" max="4" step="1" value="3" aria-describedby="relh">
+    <div class="ticks"><span>timetable</span><span>1/2</span><span>4/5</span><span>9/10</span><span>19/20</span></div>
+    <div class="hint" id="relh"></div>
+  </div>
+
+  <div class="ctl">
+    <div class="ctl-head"><label for="arr">Arrive at the office by</label><span class="val" id="arrv"></span></div>
+    <input id="arr" type="range" min="0" max="12" step="1" value="6">
+    <div class="ticks"><span>07:00</span><span>08:00</span><span>09:00</span><span>10:00</span></div>
+  </div>
+
+  <div class="legend" id="legend"></div>
+  <div class="legend-l"><span>10</span><span>20</span><span>30</span><span>40</span><span>50</span><span>60 min</span></div>
+
+  <div class="stats">
+    <h2>People who live within</h2>
+    <div id="rows"></div>
+    <div class="note">Dashed outline: the same with timetable times. Click anywhere on the map for the travel time from there.</div>
+  </div>
+
+  <details>
+    <summary>How this is calculated</summary>
+    <p>For every arrival time, a reverse search over the weekday timetable (Tuesday 20 Oct 2026) finds the latest moment you can leave home and still be at the door in time. Walking is 4.8 km/h along a path 1.3× the straight line, up to 1 km to the first stop; changing vehicles takes at least 2 minutes.</p>
+    <p><b>Reliability</b> pushes every leg's arrival back by the delay that is not exceeded on that share of weekday trips, at that stop, on that line, in that hour, plus the expected wait from cancellations. Delays were measured from operators' live data, 24 Sep–16 Oct 2026. The next vehicle is assumed to leave on time, so a late train can cost you the connection. Each leg is buffered on its own, so long trips with changes are estimated cautiously.</p>
+    <p>Travel time includes waiting at the end if the last vehicle arrives early. Population: Zensus 2022, 100 m grid.</p>
+  </details>
+  <div class="foot">Independent analysis, not affiliated with AS+P. Data: DELFI / gtfs.de (CC BY-SA 4.0), Zensus 2022, © OpenStreetMap contributors, basemap © Esri.</div>
+</aside>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const COLORS = ["#26FFDB", "#14E3C2", "#08C3A6", "#05A08A", "#067E6E", "#075E54"];   // 10 … 60 min, aqua scale
+const LEVEL_TEXT = [
+  "Timetable times: what the journey planner promises.",
+  "On time on a typical day: every other morning goes worse.",
+  "On time 4 mornings out of 5: about once a week you are late.",
+  "On time 9 mornings out of 10: about twice a month you are late.",
+  "On time 19 mornings out of 20: about once a month you are late.",
+];
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const fmt = n => n >= 1e6 ? (n / 1e6).toFixed(2) + " M" : Math.round(n / 1000) + "k";
+
+const map = L.map("map", { zoomControl: false, attributionControl: true, minZoom: 9, maxZoom: 15 });
+L.control.zoom({ position: "topright" }).addTo(map);
+// Esri's dark canvas: free with attribution and no key (CARTO now watermarks keyless use)
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/";
+L.tileLayer(ESRI + "World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
+  attribution: 'Basemap © <a href="https://www.esri.com">Esri</a>, HERE, Garmin, © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 16 }).addTo(map);
+const labels = L.tileLayer(ESRI + "World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", {
+  maxZoom: 16, pane: "shadowPane", opacity: .9 });
+
+document.getElementById("legend").innerHTML = COLORS.map(c => `<div style="background:${c}"></div>`).join("");
+
+fetch("data.json").then(r => r.json()).then(D => {
+  const active = new Uint32Array(b64(D.active).buffer);
+  const [s, w] = [D.box[0], D.box[1]];
+  const n = s + D.rows * D.dlat, e = w + D.cols * D.dlon;
+  const bounds = [[s, w], [n, e]];
+  const [olat, olon] = D.office;
+  map.setView([olat + .01, olon - .02], 11);
+  if (innerWidth <= 720) map.setView([olat - .09, olon], 10);
+  labels.addTo(map);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = D.cols; canvas.height = D.rows;
+  const ctx = canvas.getContext("2d");
+  const img = ctx.createImageData(D.cols, D.rows);
+  const rgb = COLORS.map(c => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)));
+  const overlay = L.imageOverlay(canvas.toDataURL(), bounds, { opacity: .86, interactive: false, className: "iso" }).addTo(map);
+
+  const office = L.marker([olat, olon], { icon: L.divIcon({ className: "", iconSize: [0, 0],
+    html: '<div class="office"><span class="dot"></span><div class="card"><img src="asp_logo_black.png" alt="AS+P"><span>Hedderichstraße 108–110</span></div></div>' }),
+    keyboard: false, zIndexOffset: 1000 }).addTo(map);
+
+  const rel = document.getElementById("rel"), arr = document.getElementById("arr");
+  let cur = null;
+  function draw() {
+    const level = D.levels[rel.value], time = D.arrivals[arr.value];
+    document.getElementById("relv").textContent = level;
+    document.getElementById("relh").textContent = LEVEL_TEXT[rel.value];
+    document.getElementById("arrv").textContent = time;
+    cur = b64(D.scenarios[`${time}|${level}`]);
+    img.data.fill(0);
+    for (let i = 0; i < active.length; i++) {
+      const m = cur[i];
+      if (m > 60) continue;
+      const cell = active[i], r = Math.floor(cell / D.cols), c = cell % D.cols;
+      const p = ((D.rows - 1 - r) * D.cols + c) * 4, k = rgb[Math.min(5, Math.max(0, Math.ceil(m / 10) - 1))];
+      img.data[p] = k[0]; img.data[p + 1] = k[1]; img.data[p + 2] = k[2]; img.data[p + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    overlay.setUrl(canvas.toDataURL());
+
+    const now = D.pop[`${time}|${level}`], base = D.pop[`${time}|${D.levels[0]}`];
+    const max = Math.max(...base);
+    document.getElementById("rows").innerHTML = D.bands.filter(b => b >= 20).map(b => {
+      const i = D.bands.indexOf(b), loss = base[i] ? 1 - now[i] / base[i] : 0;
+      return `<div class="row"><span class="k">${b} min</span>
+        <span class="bar"><i class="ghost" style="width:${base[i] / max * 100}%"></i><i style="width:${now[i] / max * 100}%;background:${COLORS[i]}"></i></span>
+        <span class="v">${fmt(now[i])}${rel.value > 0 && loss > 0.005 ? `<span class="d">−${Math.round(loss * 100)}%</span>` : ""}</span></div>`;
+    }).join("");
+  }
+  rel.addEventListener("input", draw); arr.addEventListener("input", draw);
+  draw();
+
+  const index = new Map(); active.forEach((c, i) => index.set(c, i));
+  map.on("click", ev => {
+    const r = Math.floor((ev.latlng.lat - s) / D.dlat), c = Math.floor((ev.latlng.lng - w) / D.dlon);
+    const i = index.get(r * D.cols + c);
+    const time = D.arrivals[arr.value];
+    const here = i === undefined ? 255 : cur[i];
+    const tt = i === undefined ? 255 : b64(D.scenarios[`${time}|${D.levels[0]}`])[i];
+    const leave = m => { const [h, mm] = time.split(":").map(Number); const t = h * 60 + mm - m; return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
+    const html = here > 60
+      ? `<div class="pop-t">60+ min</div><div class="pop-s">${tt <= 60 ? `timetable: ${tt} min` : "or too far to walk to a stop"}</div>`
+      : `<div class="pop-t">${here} min</div><div class="pop-s">leave by ${leave(here)} · timetable says ${tt} min</div>`;
+    L.popup({ closeButton: false }).setLatLng(ev.latlng).setContent(html).openOn(map);
+  });
+});
+</script>
+</body>
+</html>
